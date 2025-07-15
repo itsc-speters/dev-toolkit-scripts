@@ -40,3 +40,5 @@ pids
 
 # Script specific ignores
 # Add any script-specific temporary files here
+
+auswertung*.md
