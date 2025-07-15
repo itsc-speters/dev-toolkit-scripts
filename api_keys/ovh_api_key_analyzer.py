@@ -31,6 +31,111 @@ def load_ovh_client():
         consumer_key=consumer_key,
     )
 
+def search_credentials_by_appids(client, target_app_ids):
+    """Search all credentials for specific application IDs."""
+    print(f"Searching for credentials with Application IDs: {', '.join(map(str, target_app_ids))}")
+    
+    try:
+        # Get all credential IDs
+        credential_ids = client.get('/me/api/credential')
+        print(f"Found: {len(credential_ids)} credentials to search")
+    except Exception as e:
+        print(f"Error loading credential IDs: {e}")
+        return {}
+    
+    # Dictionary to store results by app_id
+    results_by_appid = {app_id: [] for app_id in target_app_ids}
+    
+    for credential_id in credential_ids:
+        try:
+            # Get credential details
+            credential = client.get(f'/me/api/credential/{credential_id}')
+            application_id = credential.get('applicationId')
+            
+            if application_id in target_app_ids:
+                print(f"✓ Found matching Credential ID: {credential_id} for App ID: {application_id}")
+                
+                # Try to get application details
+                try:
+                    application = client.get(f'/me/api/application/{application_id}')
+                    results_by_appid[application_id].append({
+                        'credential': credential,
+                        'application': application
+                    })
+                except ovh.exceptions.ResourceNotFoundError:
+                    # Application doesn't exist
+                    results_by_appid[application_id].append({
+                        'credential': credential,
+                        'application': None
+                    })
+                except Exception:
+                    # Other errors
+                    results_by_appid[application_id].append({
+                        'credential': credential,
+                        'application': None
+                    })
+                
+        except Exception as e:
+            # Credential errors - silently ignore
+            continue
+    
+    return results_by_appid
+
+def display_appids_search_results(results_by_appid):
+    """Display search results for specific application IDs."""
+    total_found = sum(len(credentials) for credentials in results_by_appid.values())
+    
+    print(f"\n{'='*80}")
+    print(f"SEARCH RESULTS FOR APPLICATION IDs: {', '.join(map(str, results_by_appid.keys()))}")
+    print(f"Found {total_found} matching credential(s) total")
+    print(f"{'='*80}")
+    
+    for app_id, matching_credentials in results_by_appid.items():
+        print(f"\n{'='*80}")
+        print(f"APPLICATION ID: {app_id} ({len(matching_credentials)} credential(s))")
+        print(f"{'='*80}")
+        
+        if not matching_credentials:
+            print("No credentials found with this Application ID.")
+            continue
+        
+        for i, item in enumerate(matching_credentials, 1):
+            credential = item['credential']
+            application = item['application']
+            
+            print(f"\n{'-'*60}")
+            print(f"#{i} CREDENTIAL ID: {credential.get('credentialId')}")
+            print(f"{'-'*60}")
+            
+            # Credential information
+            print("CREDENTIAL DETAILS:")
+            print(f"  Created:       {format_datetime(credential.get('creation'))}")
+            print(f"  Expires:       {format_datetime(credential.get('expiration'))}")
+            print(f"  Last Used:     {format_datetime(credential.get('lastUse'))}")
+            print(f"  Status:        {credential.get('status', 'Unknown')}")
+            print(f"  Application:   {credential.get('applicationId')}")
+            
+            # Rules display
+            rules = credential.get('rules', [])
+            if rules:
+                print(f"  Permissions:")
+                for rule in rules:
+                    method = rule.get('method', 'Unknown')
+                    path = rule.get('path', 'Unknown')
+                    print(f"    {method} {path}")
+            else:
+                print(f"  Permissions:   None found")
+            
+            # Application information
+            if application:
+                print("\nAPPLICATION DETAILS:")
+                print(f"  Name:          {application.get('name', 'Unknown')}")
+                print(f"  Description:   {application.get('description', 'No description')}")
+                print(f"  Status:        {application.get('status', 'Unknown')}")
+            else:
+                print("\nAPPLICATION DETAILS:")
+                print(f"  Status:        Application not found or inaccessible")
+
 def search_credentials_by_appid(client, target_app_id):
     """Search all credentials for a specific application ID."""
     print(f"Searching for credentials with Application ID: {target_app_id}")
@@ -274,12 +379,11 @@ def display_orphaned_applications(orphaned_applications):
         print(f"  Name:          {application.get('name', 'Unknown')}")
         print(f"  Description:   {application.get('description', 'No description')}")
         print(f"  Status:        {application.get('status', 'Unknown')}")
-        print(f"  Created:       {format_datetime(application.get('creation'))}")
 
 def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='OVH API Key Analyzer')
-    parser.add_argument('--appid', type=int, help='Search for credentials with specific Application ID')
+    parser.add_argument('--appid', type=int, nargs='+', help='Search for credentials with specific Application ID(s). Can specify multiple IDs separated by spaces.')
     args = parser.parse_args()
     
     try:
@@ -287,9 +391,15 @@ def main():
         client = load_ovh_client()
         
         if args.appid:
-            # Search for specific application ID
-            matching_credentials = search_credentials_by_appid(client, args.appid)
-            display_appid_search_results(matching_credentials, args.appid)
+            # Search for specific application ID(s)
+            if len(args.appid) == 1:
+                # Single app ID - use original function for backward compatibility
+                matching_credentials = search_credentials_by_appid(client, args.appid[0])
+                display_appid_search_results(matching_credentials, args.appid[0])
+            else:
+                # Multiple app IDs - use new function
+                results_by_appid = search_credentials_by_appids(client, args.appid)
+                display_appids_search_results(results_by_appid)
         else:
             # Normal operation - show all valid credentials and orphaned applications
             # Find valid credentials
