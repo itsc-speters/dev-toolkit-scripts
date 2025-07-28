@@ -12,6 +12,10 @@ Advanced Terraform cleanup utility with preview and batch processing.
 
 Convert Git repositories from HTTPS to SSH authentication.
 
+### 🧹 `git_cleanup.sh`
+
+Clean up local Git branches (protects main/master branches).
+
 ### 🔍 `check_git_config.sh`
 
 Scan and display Git configuration across multiple repositories.
@@ -31,6 +35,9 @@ chmod +x *.sh
 
 # Convert Git repos to SSH
 ./git_ssh_converter.sh ../
+
+# Clean up local Git branches
+./git_cleanup.sh ../
 
 # Check Git configurations
 ./check_git_config.sh ../
